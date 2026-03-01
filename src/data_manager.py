@@ -16,7 +16,7 @@ class DataManager:
         self.period = period
 
         # Download data
-        self.data = yf.download(
+        df = yf.download(
             tickers=self.ticker,
             interval=self.interval,
             period=self.period,
@@ -24,11 +24,19 @@ class DataManager:
             progress=False
         )
 
-        if self.data.empty:
-            raise ValueError("No data downloaded. Check interval and period.")
+        if df.empty:
+            raise ValueError("No data downloaded. Check interval, period and internet connection.")
+        
+        df = df.ffill() # Fill any small gaps to avoid breaks in backtest
 
-        # Fill any small gaps to avoid breaks in backtest
-        self.data = self.data.ffill()
+        # Flatten MultiIndex
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
+        self.data = df
+        self.indicators = pd.DataFrame(index=df.index)
+        self.required_warmup = 0
+
 
     def __str__(self):
         return (
@@ -40,7 +48,34 @@ class DataManager:
             f"Rows     : {self.data.shape[0]}\n"
             f"Columns  : {self.data.shape[1]}\n"
         )
+    
 
+    # ---------------------------
+    # Indicator Methods
+    # ---------------------------
+
+    def add_sma(self, window):
+        col_name = f"SMA_{window}"
+        self.indicators[col_name] = self.data["Close"].rolling(window).mean()
+        self.required_warmup = max(self.required_warmup, window)
+
+    # ---------------------------
+    # Internal
+    # ---------------------------
+
+    def _get_stable_data(self):
+        """
+        Automatically trims warmup rows.
+        """
+        if self.required_warmup > 0:
+            df = self.data.iloc[self.required_warmup:].copy()
+            ind = self.indicators.iloc[self.required_warmup:].copy()
+        else:
+            df = self.data.copy()
+            ind = self.indicators.copy()
+
+        return df, ind
+    
 
     def get_prices(self):
         if "Adj Close" in self.data.columns:
@@ -52,48 +87,47 @@ class DataManager:
         else:
             raise ValueError("No usable price column found.")
 
+
     def get_returns(self):
         prices = self.get_prices()
         return prices.pct_change().dropna()
     
 
-    def plot_candles(self):
-        df = self.data.copy()
+    # ---------------------------
+    # Plot
+    # ---------------------------
 
-        # Flatten MultiIndex if present
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
+    def plot(self, style="mike"):
+        df, ind = self._get_stable_data()
 
-        # Ensure numeric
-        for col in ["Open", "High", "Low", "Close", "Volume"]:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
+        # Always plot candles
+        if ind.empty:
+            mpf.plot(
+                df,
+                type="candle",
+                volume=True,
+                style=style,
+                title=f"{self.ticker} {self.interval}",
+                figsize=(10, 5)
+            )
+            return
 
-        df = df.dropna()
+        # Build addplots explicitly
+        apds = []
+        for column in ind.columns:
+            apds.append(mpf.make_addplot(ind[column]))
 
         mpf.plot(
             df,
             type="candle",
             volume=True,
-            style="yahoo",
+            addplot=apds,
+            style=style,
             title=f"{self.ticker} {self.interval}",
             figsize=(10, 5)
         )
     
 
-def example_1():
-    dm = DataManager(
-        ticker="SPY", 
-        interval="1m", 
-        period="1d", 
-        )
-    
-    # Get info
-    print(dm)
-
-    # See last 5 returns (%)
-    returns = dm.get_returns()
-    print(returns.tail())
-    
 
 if __name__ == "__main__":
-    example_1()
+    pass
