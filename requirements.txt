@@ -82,6 +82,7 @@ python-json-logger==4.0.0
 pytz==2025.2
 PyYAML==6.0.3
 pyzmq==27.1.0
+-e git+ssh://git@github.com/Charlie064/Quant_research.git@dbbdc6fa3609c23a72d95b967a505233e36b7913#egg=Quant_research
 referencing==0.37.0
 requests==2.32.5
 rfc3339-validator==0.1.4
