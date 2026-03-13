@@ -35,7 +35,7 @@ pip install -e .
 ## Usage
 
 ```bash
-from src.data_manager import DataManager
+from data_manager import DataManager
 
 dm = DataManager("SPY", period="1y")
 dm.add_sma(20)
