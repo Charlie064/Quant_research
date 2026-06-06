@@ -12,6 +12,7 @@ class DataManager:
         period: period to download ('7d', '60d', '1y', 'max', etc.)
         """
         self.ticker = ticker
+        self.tickers = [self.ticker]
         self.interval = interval
         self.period = period
 
@@ -34,7 +35,7 @@ class DataManager:
             df.columns = df.columns.get_level_values(0)
 
         self.data = df
-        self.indicators = pd.DataFrame(index=df.index)
+        self.indicators = {ticker: pd.DataFrame(index=df.index) for ticker in self.tickers}        
         self.required_warmup = 0
 
 
@@ -56,36 +57,42 @@ class DataManager:
 
     def add_sma(self, window):
         col_name = f"SMA_{window}"
-        self.indicators[col_name] = self.data["Close"].rolling(window).mean()
+        self.indicators[self.ticker][col_name] = self.data["Close"].rolling(window).mean()
         self.required_warmup = max(self.required_warmup, window)
 
     # ---------------------------
     # Internal
     # ---------------------------
 
+
     def _get_stable_data(self):
         """
-        Automatically trims warmup rows.
+        Returns data and indicators, automatically trimming warmup rows.
         """
         if self.required_warmup > 0:
             df = self.data.iloc[self.required_warmup:].copy()
-            ind = self.indicators.iloc[self.required_warmup:].copy()
+            # indicators is now a dict: ticker -> DataFrame
+            ind = {t: self.indicators[t].iloc[self.required_warmup:].copy() for t in self.tickers}
         else:
             df = self.data.copy()
-            ind = self.indicators.copy()
+            ind = {t: self.indicators[t].copy() for t in self.tickers}
 
         return df, ind
     
 
     def get_prices(self):
+        """
+        Returns a DataFrame of prices for all assets.
+        If single asset, still returns DataFrame with one column.
+        """
         if "Adj Close" in self.data.columns:
-            return self.data["Adj Close"]
+            prices = pd.DataFrame({self.ticker: self.data["Adj Close"]})
         elif "Close" in self.data.columns:
-            return self.data["Close"]
-        elif "close" in self.data.columns:
-            return self.data["close"]
+            prices = pd.DataFrame({self.ticker: self.data["Close"]})
         else:
             raise ValueError("No usable price column found.")
+
+        return prices
 
 
     def get_returns(self):
